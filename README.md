@@ -52,13 +52,13 @@ L'utilisateur NetBox doit avoir les permissions suivantes :
 
 ### Étape 1 : Accéder au serveur NetBox
 
-# SSH vers votre serveur NetBox
+## SSH vers votre serveur NetBox
 ssh user@netbox-server
 
-# Passer en utilisateur netbox
+## Passer en utilisateur netbox
 sudo su - netbox
 
-# Activer l'environnement virtuel Python
+## Activer l'environnement virtuel Python
 source /opt/netbox/venv/bin/activate
 
 ### Étape 2 : Créer le répertoire des scripts
