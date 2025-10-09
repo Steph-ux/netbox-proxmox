@@ -111,13 +111,13 @@ sudo systemctl restart netbox netbox-rq
 3. **Créer un token API** :
    Datacenter → Permissions → API Tokens → Add
    
-   User: root@pam (ou utilisateur personnalisé)
-   Token ID: netbox-sync
-   ☑️ Privilege Separation: Décoché (ou configurer les permissions)
-
+   - User: root@pam (ou utilisateur personnalisé)
+   - Token ID: netbox-sync
+   - ☑️ Privilege Separation: Décoché (ou configurer les permissions)
+   
 4. **Notez les informations** (important - ne s'affiche qu'une fois !) :
-   Token ID: root@pam!netbox-sync
-   Secret: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+   - Token ID: root@pam!netbox-sync
+   - Secret: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 
 ### Permissions minimales requises
 
@@ -227,7 +227,6 @@ Résultat attendu :
 - Aucune modification dans NetBox
 - Logs montrant ce qui SERAIT fait
 - Parfait pour valider avant d'appliquer
-```
 
 ### Workflow recommandé pour la première fois
 
