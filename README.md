@@ -123,10 +123,10 @@ sudo systemctl restart netbox netbox-rq
 
 Si vous utilisez "Privilege Separation", créez un rôle avec ces permissions :
 
-# Créer un rôle en lecture seule pour la synchronisation
+## Créer un rôle en lecture seule pour la synchronisation
 pveum role add NetBoxSync -privs "VM.Audit,Sys.Audit,Datastore.Audit"
 
-# Assigner le rôle à l'utilisateur/token
+## Assigner le rôle à l'utilisateur/token
 pveum acl modify / -user root@pam -role NetBoxSync
 
 **Permissions détaillées** :
@@ -136,7 +136,7 @@ pveum acl modify / -user root@pam -role NetBoxSync
 
 ### Test du token
 
-# Tester le token avec curl
+## Tester le token avec curl
 curl -k -H "Authorization: PVEAPIToken=root@pam!netbox-sync=VOTRE_SECRET" \
   https://votre-proxmox:8006/api2/json/nodes
 
@@ -185,8 +185,8 @@ Cliquez ensuite sur votre Data Sources et cliquez sur le bouton **Sync**
 
 #### Exemple 1 : Synchronisation complète (recommandé)
 
-✅ Tous les paramètres activés
-⚠️ ATTENTION : Le nettoyage supprimera les VMs qui n'existent plus dans Proxmox !
+- ✅ Tous les paramètres activés
+- ⚠️ ATTENTION : Le nettoyage supprimera les VMs qui n'existent plus dans Proxmox !
 
 Résultat attendu :
 - Toutes les VMs Proxmox ajoutées/mises à jour
@@ -196,8 +196,9 @@ Résultat attendu :
 
 #### Exemple 2 : Synchronisation sans suppression
 
-✅ Tous les paramètres activés
-❌ Nettoyer les éléments obsolètes : DÉCOCHE
+- ✅ Tous les paramètres activés
+- ❌ Nettoyer les éléments obsolètes : DÉCOCHE
+
 
 Résultat attendu :
 - Synchronisation normale
@@ -206,11 +207,11 @@ Résultat attendu :
 
 #### Exemple 3 : Synchronisation VMs uniquement (minimaliste)
 
-✅ Cluster, Proxmox Host, Token
-❌ Synchroniser les interfaces : DÉCOCHE
-❌ Synchroniser les plateformes : DÉCOCHE
-❌ Synchroniser les disques virtuels : DÉCOCHE
-❌ Nettoyer les éléments obsolètes : DÉCOCHE
+- ✅ Cluster, Proxmox Host, Token
+- ❌ Synchroniser les interfaces : DÉCOCHE
+- ❌ Synchroniser les plateformes : DÉCOCHE
+- ❌ Synchroniser les disques virtuels : DÉCOCHE
+- ❌ Nettoyer les éléments obsolètes : DÉCOCHE
 
 Résultat attendu :
 - Seules les informations de base des VMs (nom, CPU, RAM, statut)
