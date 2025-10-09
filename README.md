@@ -292,15 +292,20 @@ Le script fonctionne mais avec moins de précision.
 ### Logs de succès
 
 - ✅ VM myserver créée dans NetBox
+  
      - Plateforme assignée: Ubuntu 22.04.3 LTS
      - Synchronisation des disques virtuels...
      - Disque créé: scsi0 (100.0GB)
      - Disque créé: scsi1 (500.0GB)
+       
 - ✅ Synchronisation des interfaces...
+  
      - Interface net0 créée
      - MAC AA:BB:CC:DD:EE:FF créée et assignée
      - IP 192.168.1.100/24 créée et assignée
+       
 - IP primaire définie: 192.168.1.100/24 (interface: net0)
+  
 - Type de connexion défini: Private
 
 **Interprétation** : VM synchronisée avec succès, agent QEMU disponible, toutes les données récupérées.
@@ -308,8 +313,10 @@ Le script fonctionne mais avec moins de précision.
 ### Logs d'avertissement
 
 - ⚠️ Agent QEMU non disponible pour VM oldserver - utilisation du fallback
+  
     - Interface existante trouvée: net0 (MAC: AA:BB:CC:DD:EE:FF)
     - Préservation du nom personnalisé: eth0-internal
+      
 - ⚠️ IP 192.168.1.50/24 déjà assignée à une autre VM (webserver), ignorée
 
 **Interprétation** : 
@@ -429,10 +436,10 @@ Le script fonctionne mais avec moins de précision.
 
 ---
 
-#### ❌ Erreur : "VM already exists" ou problèmes de duplication
+#### Erreur : "VM already exists" ou problèmes de duplication
 
 **Symptômes** :
-❌ IntegrityError: duplicate key value violates unique constraint
+IntegrityError: duplicate key value violates unique constraint
 
 **Solutions** :
 1. Vérifier qu'il n'y a pas de doublon dans NetBox :
@@ -457,11 +464,11 @@ Le script fonctionne mais avec moins de précision.
 
 **Solutions** :
 1. Installer QEMU Guest Agent dans la VM :
-   # Debian/Ubuntu
+   ## Debian/Ubuntu
    apt install qemu-guest-agent
    systemctl enable --now qemu-guest-agent
    
-   # CentOS/RHEL
+   ## CentOS/RHEL
    yum install qemu-guest-agent
    systemctl enable --now qemu-guest-agent
 
@@ -472,7 +479,7 @@ Le script fonctionne mais avec moins de précision.
    
 ---
 
-#### ❌ Erreur : "Permission denied" lors de l'import du script
+#### Erreur : "Permission denied" lors de l'import du script
 
 **Symptômes** :
 ImportError: No module named 'scripts.proxmox_sync'
