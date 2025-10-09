@@ -63,10 +63,10 @@ source /opt/netbox/venv/bin/activate
 
 ### Étape 2 : Créer le répertoire des scripts
 
-# Naviguer vers le répertoire NetBox
+## Naviguer vers le répertoire NetBox
 cd /opt/netbox/netbox
 
-# Créer le répertoire pour les scripts personnalisés (s'il n'existe pas)
+## Créer le répertoire pour les scripts personnalisés (s'il n'existe pas)
 mkdir -p scripts
 
 # Vérifier les permissions
@@ -74,28 +74,28 @@ ls -la scripts/
 
 ### Étape 3 : Installer le script
 
-# Télécharger le script
+## Télécharger le script
 cd /opt/netbox/netbox/scripts
 wget https://raw.githubusercontent.com/Steph-ux/proxmox-netbox-sync/main/proxmox_sync.py
 
-# OU copier le fichier manuellement
-# Ensuite, définir les permissions appropriées
+## OU copier le fichier manuellement
+## Ensuite, définir les permissions appropriées
 chmod 644 proxmox_sync.py
 chown netbox:netbox proxmox_sync.py
 
 ### Étape 4 : Vérifier l'installation
 
-# Retourner au répertoire NetBox
+## Retourner au répertoire NetBox
 cd /opt/netbox/netbox
 
-# Tester l'import du script
+## Tester l'import du script
 python3 manage.py nbshell
 >>> from scripts.proxmox_sync import ProxmoxSync
 >>> exit()
 
 ### Étape 5 : Redémarrer NetBox (si nécessaire)
 
-# Redémarrer les services NetBox
+## Redémarrer les services NetBox
 sudo systemctl restart netbox netbox-rq
 
 ## 🔑 Configuration du Token API Proxmox
@@ -140,7 +140,7 @@ pveum acl modify / -user root@pam -role NetBoxSync
 curl -k -H "Authorization: PVEAPIToken=root@pam!netbox-sync=VOTRE_SECRET" \
   https://votre-proxmox:8006/api2/json/nodes
 
-# Vous devriez voir une réponse JSON avec la liste des nœuds
+## Vous devriez voir une réponse JSON avec la liste des nœuds
 
 ## 📖 Guide d'utilisation
 
@@ -185,7 +185,6 @@ Cliquez ensuite sur votre Data Sources et cliquez sur le bouton **Sync**
 
 #### Exemple 1 : Synchronisation complète (recommandé)
 
-```
 ✅ Tous les paramètres activés
 ⚠️ ATTENTION : Le nettoyage supprimera les VMs qui n'existent plus dans Proxmox !
 
