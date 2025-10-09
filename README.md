@@ -1,17 +1,17 @@
-# 🔄 Proxmox → NetBox Sync Script
+# Proxmox → NetBox Sync Script
 
 Script de synchronisation automatique et intelligent des machines virtuelles Proxmox vers NetBox avec nettoyage automatique des éléments obsolètes.
 
-## ✨ Fonctionnalités
+## Fonctionnalités
 
-- 🔄 **Synchronisation complète** : VMs, interfaces réseau, adresses IP, disques virtuels et plateformes OS
-- 🧹 **Nettoyage automatique** : Suppression des VMs, interfaces et IPs qui n'existent plus dans Proxmox
-- 🌐 **Détection intelligente** : Classification automatique Public/Private basée sur les plages IP
-- 💾 **Gestion des disques** : Synchronisation détaillée des disques virtuels (taille, type, storage)
-- 🔌 **Interfaces réseau** : Support complet avec MAC addresses, VLANs et bridges
-- 🤖 **QEMU Guest Agent** : Récupération des informations OS et réseau en temps réel avec fallback automatique
-- 🧪 **Mode Dry-Run** : Testez sans risque avant d'appliquer les modifications
-- 📊 **Logging détaillé** : Suivi complet de toutes les opérations avec statistiques
+- **Synchronisation complète** : VMs, interfaces réseau, adresses IP, disques virtuels et plateformes OS
+- **Nettoyage automatique** : Suppression des VMs, interfaces et IPs qui n'existent plus dans Proxmox
+- **Détection intelligente** : Classification automatique Public/Private basée sur les plages IP
+- **Gestion des disques** : Synchronisation détaillée des disques virtuels (taille, type, storage)
+- **Interfaces réseau** : Support complet avec MAC addresses, VLANs et bridges
+- **QEMU Guest Agent** : Récupération des informations OS et réseau en temps réel avec fallback automatique
+- **Mode Dry-Run** : Testez sans risque avant d'appliquer les modifications
+- **Logging détaillé** : Suivi complet de toutes les opérations avec statistiques
 
 ## 📋 Prérequis
 
