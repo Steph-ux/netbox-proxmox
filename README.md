@@ -78,8 +78,9 @@ ls -la scripts/
 cd /opt/netbox/netbox/scripts
 wget https://raw.githubusercontent.com/Steph-ux/proxmox-netbox-sync/main/proxmox_sync.py
 
-## OU copier le fichier manuellement
-## Ensuite, définir les permissions appropriées
+OU copier le fichier manuellement
+Ensuite, définir les permissions appropriées
+
 chmod 644 proxmox_sync.py
 chown netbox:netbox proxmox_sync.py
 
@@ -133,13 +134,6 @@ pveum acl modify / -user root@pam -role NetBoxSync
 - `VM.Audit` : Lire les informations des VMs
 - `Sys.Audit` : Lire les informations système
 - `Datastore.Audit` : Lire les informations de stockage
-
-### Test du token
-
-### Tester le token avec curl
-curl -k -H "Authorization: PVEAPIToken=root@pam!netbox-sync=VOTRE_SECRET" https://votre-proxmox:8006/api2/json/nodes
-
-Vous devriez voir une réponse JSON avec la liste des nœuds
 
 ## 📖 Guide d'utilisation
 
