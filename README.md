@@ -69,7 +69,7 @@ cd /opt/netbox/netbox
 ## Créer le répertoire pour les scripts personnalisés (s'il n'existe pas)
 mkdir -p scripts
 
-# Vérifier les permissions
+## Vérifier les permissions
 ls -la scripts/
 
 ### Étape 3 : Installer le script
