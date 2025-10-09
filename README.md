@@ -302,24 +302,24 @@ Prérequis :
 
 **Installation QEMU Agent** :
 
-# Debian/Ubuntu
+## Debian/Ubuntu
 apt-get install qemu-guest-agent
 systemctl start qemu-guest-agent
 
-# CentOS/RHEL
+## CentOS/RHEL
 yum install qemu-guest-agent
 systemctl start qemu-guest-agent
 
-# Windows
-# Installer depuis le CD VirtIO drivers ou
-# Télécharger depuis https://fedorapeople.org/groups/virt/virtio-win/
+## Windows
+## Installer depuis le CD VirtIO drivers ou
+## Télécharger depuis https://fedorapeople.org/groups/virt/virtio-win/
 
 #### Sans QEMU Guest Agent (fallback)
 
 Limitations :
-⚠️ Noms génériques (net0, net1, etc.)
-⚠️ IPs récupérées depuis Proxmox (peuvent être obsolètes)
-⚠️ Pas d'information OS détaillée
+- Noms génériques (net0, net1, etc.)
+- IPs récupérées depuis Proxmox (peuvent être obsolètes)
+- Pas d'information OS détaillée
 
 Le script fonctionne mais avec moins de précision.
 
@@ -343,10 +343,10 @@ Le script fonctionne mais avec moins de précision.
 
 ### Logs d'avertissement
 
-⚠️ Agent QEMU non disponible pour VM oldserver - utilisation du fallback
-    Interface existante trouvée: net0 (MAC: AA:BB:CC:DD:EE:FF)
-    Préservation du nom personnalisé: eth0-internal
-⚠️ IP 192.168.1.50/24 déjà assignée à une autre VM (webserver), ignorée
+- ⚠️ Agent QEMU non disponible pour VM oldserver - utilisation du fallback
+    - Interface existante trouvée: net0 (MAC: AA:BB:CC:DD:EE:FF)
+    - Préservation du nom personnalisé: eth0-internal
+- ⚠️ IP 192.168.1.50/24 déjà assignée à une autre VM (webserver), ignorée
 
 **Interprétation** : 
 - VM fonctionne sans agent (normal pour certaines VMs)
@@ -355,12 +355,12 @@ Le script fonctionne mais avec moins de précision.
 
 ### Logs de nettoyage
 
-🗑️  VM obsolète détectée: old-test-vm
-    Détachement IP: 192.168.1.200/24
-    VM old-test-vm supprimée de NetBox (1 IP(s) détachée(s))
+- 🗑️  VM obsolète détectée: old-test-vm
+     - Détachement IP: 192.168.1.200/24
+     - VM old-test-vm supprimée de NetBox (1 IP(s) détachée(s))
 
-🗑️  Suppression interface obsolète: net2
-🗑️  Détachement IP obsolète: 10.0.0.50/24
+- 🗑️  Suppression interface obsolète: net2
+- 🗑️  Détachement IP obsolète: 10.0.0.50/24
 
 **Interprétation** : Ressources supprimées automatiquement car elles n'existent plus dans Proxmox.
 
