@@ -228,46 +228,7 @@ Résultat attendu :
 - Logs montrant ce qui SERAIT fait
 - Parfait pour valider avant d'appliquer
 
-### Workflow recommandé pour la première fois
-
-graph TD
-    A[Préparer le cluster NetBox] --> B[Créer token Proxmox]
-    B --> C[Mode Dry-Run complet]
-    C --> D{Résultats OK ?}
-    D -->|Non| E[Ajuster paramètres]
-    E --> C
-    D -->|Oui| F[Sync sans nettoyage]
-    F --> G[Vérifier dans NetBox]
-    G --> H{Tout est correct ?}
-    H -->|Oui| I[Activer nettoyage]
-    H -->|Non| J[Corriger manuellement]
-    J --> F
-
 ## 🔧 Fonctionnement détaillé
-
-### Flux de synchronisation
-
-1. Connexion à Proxmox
-   ├─ Validation du token
-   └─ Récupération de la liste des nœuds
-
-2. Pour chaque nœud Proxmox
-   ├─ Liste des VMs QEMU
-   └─ Pour chaque VM
-       ├─ Récupération config (CPU, RAM, disques)
-       ├─ Tentative QEMU Agent (OS, IPs)
-       ├─ Création/MAJ VM dans NetBox
-       ├─ Sync interfaces réseau
-       ├─ Sync adresses IP
-       ├─ Sync disques virtuels
-       ├─ Définition IP primaire
-       └─ Détection type connexion
-
-3. Nettoyage (si activé)
-   ├─ Comparaison VMs NetBox vs Proxmox
-   ├─ Suppression VMs obsolètes
-   ├─ Détachement IPs orphelines
-   └─ Suppression interfaces obsolètes
 
 ### Détection du type de connexion
 
@@ -291,10 +252,10 @@ Le script analyse automatiquement les plages IP pour déterminer le type :
 #### Avec QEMU Guest Agent (recommandé)
 
 Avantages :
-✅ Noms réels des interfaces (eth0, ens18, etc.)
-✅ Adresses IP en temps réel
-✅ Information précise sur le système d'exploitation
-✅ État de connexion des interfaces
+- ✅ Noms réels des interfaces (eth0, ens18, etc.)
+- ✅ Adresses IP en temps réel
+- ✅ Information précise sur le système d'exploitation
+- ✅ État de connexion des interfaces
 
 Prérequis :
 - QEMU Guest Agent installé dans la VM
@@ -303,12 +264,12 @@ Prérequis :
 **Installation QEMU Agent** :
 
 ## Debian/Ubuntu
-apt-get install qemu-guest-agent
-systemctl start qemu-guest-agent
+- apt-get install qemu-guest-agent
+- systemctl start qemu-guest-agent
 
 ## CentOS/RHEL
-yum install qemu-guest-agent
-systemctl start qemu-guest-agent
+- yum install qemu-guest-agent
+- systemctl start qemu-guest-agent
 
 ## Windows
 ## Installer depuis le CD VirtIO drivers ou
@@ -366,7 +327,7 @@ Le script fonctionne mais avec moins de précision.
 
 ### Logs d'erreur
 
-❌ Erreur lors de la requête https://proxmox:8006/api2/json/nodes: Connection timeout
+- ❌ Erreur lors de la requête https://proxmox:8006/api2/json/nodes: Connection timeout
 
 **Cause possible** : 
 - Serveur Proxmox injoignable
