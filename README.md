@@ -275,8 +275,8 @@ Prérequis :
 - systemctl start qemu-guest-agent
 
 ## Windows
-## Installer depuis le CD VirtIO drivers ou
-## Télécharger depuis https://fedorapeople.org/groups/virt/virtio-win/
+Installer depuis le CD VirtIO drivers ou
+- Télécharger depuis https://fedorapeople.org/groups/virt/virtio-win/
 
 #### Sans QEMU Guest Agent (fallback)
 
