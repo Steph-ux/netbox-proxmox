@@ -95,9 +95,6 @@ python3 manage.py nbshell
 
 ### Étape 5 : Redémarrer NetBox (si nécessaire)
 
-# Sortir de l'utilisateur netbox
-exit
-
 # Redémarrer les services NetBox
 sudo systemctl restart netbox netbox-rq
 
