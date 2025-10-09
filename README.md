@@ -263,11 +263,11 @@ Prérequis :
 
 **Installation QEMU Agent** :
 
-## Debian/Ubuntu
+### Debian/Ubuntu
 - apt-get install qemu-guest-agent
 - systemctl start qemu-guest-agent
 
-## CentOS/RHEL
+### CentOS/RHEL
 - yum install qemu-guest-agent
 - systemctl start qemu-guest-agent
 
@@ -546,8 +546,8 @@ La synchronisation prend plusieurs minutes pour quelques VMs.
 2. Optimiser la connexion réseau
 3. Désactiver les synchronisations optionnelles :
 
-   ❌ Synchroniser les plateformes (si pas critique)
-   ❌ Synchroniser les disques virtuels (si pas nécessaire)
+   - ❌ Synchroniser les plateformes (si pas critique)
+   - ❌ Synchroniser les disques virtuels (si pas nécessaire)
 
 ---
 
@@ -558,24 +558,24 @@ La synchronisation prend plusieurs minutes pour quelques VMs.
 Le script affiche déjà beaucoup d'informations, mais vous pouvez consulter :
 
 
-# Logs NetBox généraux
+## Logs NetBox généraux
 tail -f /opt/netbox/netbox/netbox.log
 
-# Logs de l'exécution des scripts
-# Visibles directement dans l'interface web NetBox après exécution
+## Logs de l'exécution des scripts
+## Visibles directement dans l'interface web NetBox après exécution
 
 
 #### Tester la connexion Proxmox manuellement
 
 
-# Test de connectivité
+## Test de connectivité
 curl -k https://PROXMOX_IP:8006/api2/json/version
 
-# Test avec authentification
+## Test avec authentification
 curl -k -H "Authorization: PVEAPIToken=USER@REALM!TOKENID=SECRET" \
   https://PROXMOX_IP:8006/api2/json/nodes
 
-# Test récupération VMs
+## Test récupération VMs
 curl -k -H "Authorization: PVEAPIToken=USER@REALM!TOKENID=SECRET" \
   https://PROXMOX_IP:8006/api2/json/nodes/NODE_NAME/qemu
 
