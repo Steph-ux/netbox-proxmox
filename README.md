@@ -327,17 +327,17 @@ Le script fonctionne mais avec moins de précision.
 
 ### Logs de succès
 
-✅ VM myserver créée dans NetBox
-  Plateforme assignée: Ubuntu 22.04.3 LTS
-  Synchronisation des disques virtuels...
-    Disque créé: scsi0 (100.0GB)
-    Disque créé: scsi1 (500.0GB)
-  Synchronisation des interfaces...
-    Interface net0 créée
-      MAC AA:BB:CC:DD:EE:FF créée et assignée
-      IP 192.168.1.100/24 créée et assignée
-  IP primaire définie: 192.168.1.100/24 (interface: net0)
-  Type de connexion défini: Private
+- ✅ VM myserver créée dans NetBox
+     - Plateforme assignée: Ubuntu 22.04.3 LTS
+     - Synchronisation des disques virtuels...
+     - Disque créé: scsi0 (100.0GB)
+     - Disque créé: scsi1 (500.0GB)
+- ✅ Synchronisation des interfaces...
+     - Interface net0 créée
+     - MAC AA:BB:CC:DD:EE:FF créée et assignée
+     - IP 192.168.1.100/24 créée et assignée
+- IP primaire définie: 192.168.1.100/24 (interface: net0)
+- Type de connexion défini: Private
 
 **Interprétation** : VM synchronisée avec succès, agent QEMU disponible, toutes les données récupérées.
 
