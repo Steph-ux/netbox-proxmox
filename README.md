@@ -441,19 +441,19 @@ response = requests.post(url, headers=headers, json=data)
 
 **Symptômes** :
 ❌ Erreur lors de la requête https://proxmox:8006/api2/json/nodes: 
-   Connection refused
+   - Connection refused
 
 **Solutions** :
 1. Vérifier que Proxmox est accessible :
-   ping proxmox-server
-   curl -k https://proxmox-server:8006
+   - ping proxmox-server
+   - curl -k https://proxmox-server:8006
 
 2. Vérifier le firewall :
-   # Sur le serveur NetBox
+   ### Sur le serveur NetBox
    telnet proxmox-server 8006
 
 3. Vérifier le port (par défaut 8006) :
-   # Sur le serveur Proxmox
+   ### Sur le serveur Proxmox
    ss -tlnp | grep 8006
 
 ---
