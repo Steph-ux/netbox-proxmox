@@ -139,24 +139,28 @@ pveum acl modify / -user root@pam -role NetBoxSync
 ### Tester le token avec curl
 curl -k -H "Authorization: PVEAPIToken=root@pam!netbox-sync=VOTRE_SECRET" https://votre-proxmox:8006/api2/json/nodes
 
-## Vous devriez voir une réponse JSON avec la liste des nœuds
+Vous devriez voir une réponse JSON avec la liste des nœuds
 
 ## 📖 Guide d'utilisation
 
 ### Accès au script dans NetBox
 
 1. Connectez-vous à NetBox : `https://votre-netbox`
-2. Allez dans **Operations → Integration → Data Source → +Add**
+   
+3. Allez dans **Operations → Integration → Data Source → +Add**
       - Name: "script" (exemple)
       - Type: "local"
       - URL: "/opt/netbox/netbox/scripts" (l'emplacement du répertoire du script)
       - Save
 Cliquez ensuite sur votre Data Sources et cliquez sur le bouton **Sync**
-3. Allez dans **Customization → Scripts → +Add**
+
+4. Allez dans **Customization → Scripts → +Add**
       - Data Source: "script"
       - File: proxmox_sync.py (le script)
+      - 
 5. Trouvez **"Proxmox VM Sync"**
-6. Cliquez sur **"Run Script"**
+   
+7. Cliquez sur **"Run Script"**
 
 ### Configuration de base (première synchronisation)
 
