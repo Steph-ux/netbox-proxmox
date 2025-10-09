@@ -136,9 +136,8 @@ pveum acl modify / -user root@pam -role NetBoxSync
 
 ### Test du token
 
-## Tester le token avec curl
-curl -k -H "Authorization: PVEAPIToken=root@pam!netbox-sync=VOTRE_SECRET" \
-  https://votre-proxmox:8006/api2/json/nodes
+### Tester le token avec curl
+curl -k -H "Authorization: PVEAPIToken=root@pam!netbox-sync=VOTRE_SECRET" https://votre-proxmox:8006/api2/json/nodes
 
 ## Vous devriez voir une réponse JSON avec la liste des nœuds
 
