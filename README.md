@@ -579,12 +579,6 @@ Visibles directement dans l'interface web NetBox après exécution
 ### Test de connectivité
 curl -k https://PROXMOX_IP:8006/api2/json/version
 
-### Test avec authentification
-- curl -k -H "Authorization: PVEAPIToken=USER@REALM!TOKENID=SECRET" https://PROXMOX_IP:8006/api2/json/nodes
-
-### Test récupération VMs
-- curl -k -H "Authorization: PVEAPIToken=USER@REALM!TOKENID=SECRET" https://PROXMOX_IP:8006/api2/json/nodes/NODE_NAME/qemu
-
 #### Mode Dry-Run approfondi
 
 Toujours tester avec le mode Dry-Run avant toute modification importante :
