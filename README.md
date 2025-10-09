@@ -534,7 +534,7 @@ Des VMs valides sont supprimées de NetBox après synchronisation.
    ❌ Nettoyer les éléments obsolètes : DÉCOCHER
 
 2. Vérifier dans Proxmox :
-   # Lister toutes les VMs
+   ## Lister toutes les VMs
    pvesh get /cluster/resources --type vm
 
 3. Vérifier les logs du script pour identifier la cause
@@ -568,21 +568,21 @@ La synchronisation prend plusieurs minutes pour quelques VMs.
 Le script affiche déjà beaucoup d'informations, mais vous pouvez consulter :
 
 
-## Logs NetBox généraux
+### Logs NetBox généraux
 tail -f /opt/netbox/netbox/netbox.log
 
-## Logs de l'exécution des scripts
+### Logs de l'exécution des scripts
 Visibles directement dans l'interface web NetBox après exécution
 
 #### Tester la connexion Proxmox manuellement
 
-## Test de connectivité
+### Test de connectivité
 curl -k https://PROXMOX_IP:8006/api2/json/version
 
-## Test avec authentification
+### Test avec authentification
 curl -k -H "Authorization: PVEAPIToken=USER@REALM!TOKENID=SECRET" https://PROXMOX_IP:8006/api2/json/nodes
 
-## Test récupération VMs
+### Test récupération VMs
 curl -k -H "Authorization: PVEAPIToken=USER@REALM!TOKENID=SECRET" https://PROXMOX_IP:8006/api2/json/nodes/NODE_NAME/qemu
 
 #### Mode Dry-Run approfondi
