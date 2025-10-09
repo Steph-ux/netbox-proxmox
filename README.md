@@ -114,7 +114,7 @@ sudo systemctl restart netbox netbox-rq
    
    - User: root@pam (ou utilisateur personnalisé)
    - Token ID: netbox-sync
-   - ☑️ Privilege Separation: Décoché (ou configurer les permissions)
+   - Privilege Separation: Décoché (ou configurer les permissions)
    
 4. **Notez les informations** (important - ne s'affiche qu'une fois !) :
    - Token ID: root@pam!netbox-sync
