@@ -157,7 +157,7 @@ Cliquez ensuite sur votre Data Sources et cliquez sur le bouton **Sync**
 4. Allez dans **Customization → Scripts → +Add**
       - Data Source: "script"
       - File: proxmox_sync.py (le script)
-      - 
+       
 5. Trouvez **"Proxmox VM Sync"**
    
 7. Cliquez sur **"Run Script"**
