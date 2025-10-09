@@ -358,23 +358,7 @@ Le script fonctionne mais avec moins de précision.
 
 #### Q4 : Peut-on exécuter le script automatiquement (cron) ?
 
-**R :** ✅ Oui, via l'API NetBox ou un job planifié :
-
-# Exemple avec l'API NetBox (script externe)
-import requests
-
-url = "https://netbox/api/extras/scripts/proxmox_sync.ProxmoxSync/"
-headers = {"Authorization": "Token VOTRE_TOKEN_NETBOX"}
-data = {
-    "data": {
-        "target_cluster": 1,
-        "proxmox_host": "192.168.1.10",
-        "proxmox_token_id": "root@pam!netbox",
-        "proxmox_token_secret": "secret",
-        "commit": True
-    }
-}
-response = requests.post(url, headers=headers, json=data)
+**R :** ✅ Oui, via l'API NetBox ou un job planifié
 
 ---
 
@@ -411,33 +395,33 @@ response = requests.post(url, headers=headers, json=data)
 
 2. Vérifier le firewall :
    ### Sur le serveur NetBox
-   telnet proxmox-server 8006
+   - telnet proxmox-server 8006
 
 3. Vérifier le port (par défaut 8006) :
    ### Sur le serveur Proxmox
-   ss -tlnp | grep 8006
+   - ss -tlnp | grep 8006
 
 ---
 
 #### ❌ Erreur : "Authentication failure" ou "401 Unauthorized"
 
 **Symptômes** :
-❌ Réponse non-200 : 401 - {"success":0}
+- ❌ Réponse non-200 : 401 - {"success":0}
 
 **Solutions** :
 1. Vérifier le format du Token ID :
-   Format correct : user@realm!tokenid
-   Exemple : root@pam!netbox-sync
+   - Format correct : user@realm!tokenid
+   - Exemple : root@pam!netbox-sync
    
-   ❌ Incorrect : root@pam
-   ❌ Incorrect : netbox-sync
+   - ❌ Incorrect : root@pam
+   - ❌ Incorrect : netbox-sync
 
 2. Vérifier que le token existe :
-   # Dans Proxmox Web UI
+   ## Dans Proxmox Web UI
    Datacenter → Permissions → API Tokens
 
 3. Tester le token manuellement :
-   curl -k -H "Authorization: PVEAPIToken=root@pam!netbox-sync=SECRET" \
+   - curl -k -H "Authorization: PVEAPIToken=root@pam!netbox-sync=SECRET" \
      https://proxmox:8006/api2/json/version
 
 ---
