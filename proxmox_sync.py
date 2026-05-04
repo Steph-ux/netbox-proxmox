@@ -1,12 +1,11 @@
 from extras.scripts import *
-from virtualization.models import Cluster, ClusterType, VirtualMachine, VMInterface, VirtualDisk
+from virtualization.models import Cluster, VirtualMachine, VMInterface, VirtualDisk
 from dcim.models import Platform
 from ipam.models import IPAddress
 from django.contrib.contenttypes.models import ContentType
-from django.db import IntegrityError, transaction
+from django.db import transaction
 import requests
 import urllib3
-import json
 import re
 import ipaddress
 
@@ -59,8 +58,6 @@ class ProxmoxSync(Script):
         default=True
     )
 
-    # FIX #1 : BooleanVar conserve son nom de champ.
-    # La methode associee est renommee apply_primary_ip() plus bas.
     set_primary_ip = BooleanVar(
         description="Definir automatiquement la premiere IP comme IP primaire",
         label="Definir IP primaire",
@@ -90,7 +87,7 @@ class ProxmoxSync(Script):
     # -------------------------------------------------------------------------
 
     def proxmox_get(self, url, headers):
-        """Effectue une requete GET vers l'API Proxmox avec logs detailles"""
+        """Effectue une requete GET vers l'API Proxmox"""
         try:
             self.log_info(f"Requete API : {url}")
             response = requests.get(url, headers=headers, verify=False, timeout=30)
@@ -241,7 +238,7 @@ class ProxmoxSync(Script):
     def get_vm_network_status_fallback(self, vm_status_data):
         """
         Recupere les adresses IP depuis le status de la VM (methode fallback).
-        Retourne une liste de dicts avec 'address', 'interface' (nom OS) et 'mac_address'.
+        Retourne une liste de dicts avec 'address', 'interface' et 'mac_address'.
         """
         ip_addresses = []
 
@@ -326,40 +323,97 @@ class ProxmoxSync(Script):
     # -------------------------------------------------------------------------
 
     def find_interface_by_mac(self, netbox_vm, mac_address):
-        """Trouve une interface par son adresse MAC normalisee"""
+        """
+        Trouve une interface par son adresse MAC.
+        Recherche via le ContentType VMInterface sur la table MACAddress,
+        puis verifie que l'interface appartient bien a la VM cible.
+        """
         if not mac_address:
+            return None
+
+        normalized_mac = self.parse_mac_address(mac_address)
+        if not normalized_mac:
             return None
 
         try:
             from dcim.models import MACAddress
 
-            normalized_mac = self.parse_mac_address(mac_address)
-            if not normalized_mac:
-                return None
-
-            mac_obj = MACAddress.objects.filter(mac_address=normalized_mac).first()
-            if mac_obj:
-                if (mac_obj.assigned_object_type and
-                        hasattr(mac_obj.assigned_object, 'virtual_machine') and
-                        mac_obj.assigned_object.virtual_machine == netbox_vm):
-                    return mac_obj.assigned_object
-
             vminterface_ct = ContentType.objects.get_for_model(VMInterface)
-            for interface in VMInterface.objects.filter(virtual_machine=netbox_vm):
-                interface_mac_obj = MACAddress.objects.filter(
-                    assigned_object_type=vminterface_ct,
-                    assigned_object_id=interface.pk
+
+            # Chercher la MAC uniquement parmi celles affectees a des VMInterface
+            mac_obj = MACAddress.objects.filter(
+                mac_address=normalized_mac,
+                assigned_object_type=vminterface_ct
+            ).first()
+
+            if mac_obj and mac_obj.assigned_object_id:
+                return VMInterface.objects.filter(
+                    pk=mac_obj.assigned_object_id,
+                    virtual_machine=netbox_vm
                 ).first()
 
-                if interface_mac_obj:
-                    mac_str = str(interface_mac_obj.mac_address).upper().replace('-', ':')
-                    if mac_str == normalized_mac.upper():
-                        return interface
-
             return None
+
         except Exception as e:
             self.log_warning(f"    Erreur recherche interface par MAC {mac_address}: {str(e)}")
             return None
+
+    def assign_mac_to_interface(self, netbox_interface, mac_address):
+        """
+        Assigne une adresse MAC a une interface VMInterface.
+
+        CORRECTIF IPAM : les deux cotes de la relation doivent etre renseignes :
+          1. MACAddress.assigned_object -> VMInterface  (cote MACAddress)
+          2. VMInterface.primary_mac_address -> MACAddress  (cote interface)
+
+        Sans le point 2, NetBox ne sait pas quelle est la MAC principale de
+        l'interface et la chaine IP -> Interface -> VM est incomplete dans l'UI.
+        """
+        try:
+            from dcim.models import MACAddress
+
+            normalized_mac = self.parse_mac_address(mac_address)
+            if not normalized_mac:
+                return
+
+            interface_content_type = ContentType.objects.get_for_model(VMInterface)
+            mac_obj = MACAddress.objects.filter(mac_address=normalized_mac).first()
+
+            if mac_obj:
+                already_assigned = (
+                    mac_obj.assigned_object_type == interface_content_type
+                    and mac_obj.assigned_object_id == netbox_interface.pk
+                )
+                if not already_assigned:
+                    if mac_obj.assigned_object:
+                        self.log_warning(
+                            f"      MAC {normalized_mac} reassignee vers l'interface {netbox_interface.name}"
+                        )
+                    mac_obj.assigned_object_type = interface_content_type
+                    mac_obj.assigned_object_id = netbox_interface.pk
+                    mac_obj.save()
+            else:
+                mac_obj = MACAddress.objects.create(
+                    mac_address=normalized_mac,
+                    assigned_object_type=interface_content_type,
+                    assigned_object_id=netbox_interface.pk
+                )
+                self.log_success(f"      MAC {normalized_mac} creee et associee a l'interface")
+
+            # --- CORRECTIF : renseigner primary_mac_address sur l'interface ---
+            # C'est ce champ qui permet a NetBox d'afficher la MAC dans l'UI
+            # et d'etablir la navigation IP -> Interface -> VM dans l'IPAM.
+            if hasattr(netbox_interface, 'primary_mac_address'):
+                if netbox_interface.primary_mac_address_id != mac_obj.pk:
+                    netbox_interface.primary_mac_address = mac_obj
+                    netbox_interface.save()
+                    self.log_info(f"      MAC primaire definie sur l'interface : {normalized_mac}")
+                else:
+                    self.log_info(f"      MAC {normalized_mac} deja definie comme MAC primaire")
+            # ------------------------------------------------------------------
+
+        except Exception as e:
+            self.log_warning(f"      Erreur assignation MAC {mac_address}: {str(e)}")
 
     def sync_vm_interfaces(self, netbox_vm, vm_config, base_url, node_name, vm_id, headers, vm_status, commit):
         """Synchronise les interfaces d'une VM avec nettoyage des interfaces obsoletes"""
@@ -396,16 +450,16 @@ class ProxmoxSync(Script):
                             })
         else:
             self.log_warning(
-                f"  Agent QEMU non disponible pour VM "
+                f"  Agent QEMU non disponible pour la VM "
                 f"{netbox_vm.name if netbox_vm else vm_id} - utilisation du fallback"
             )
             status_data = vm_status.get('data', {}) if vm_status else {}
             ip_addresses = self.get_vm_network_status_fallback(status_data)
 
         if not commit:
-            self.log_info(f"  [DRY-RUN] Interfaces trouvees: {len(interfaces_config)}")
-            self.log_info(f"  [DRY-RUN] IPs trouvees: {len(ip_addresses)}")
-            self.log_info(f"  [DRY-RUN] Agent QEMU: {'Disponible' if agent_available else 'Non disponible'}")
+            self.log_info(f"  [DRY-RUN] Interfaces trouvees : {len(interfaces_config)}")
+            self.log_info(f"  [DRY-RUN] IPs trouvees : {len(ip_addresses)}")
+            self.log_info(f"  [DRY-RUN] Agent QEMU : {'Disponible' if agent_available else 'Non disponible'}")
             return
 
         synced_interface_macs = set()
@@ -436,20 +490,22 @@ class ProxmoxSync(Script):
                     desc_parts.append(f"VLAN: {interface_config['vlan']}")
                 if mac_address:
                     desc_parts.append(f"MAC: {mac_address}")
-                desc_parts.append("Source: QEMU Agent" if agent_available else "Source: Proxmox Config (Agent non disponible)")
+                desc_parts.append(
+                    "Source: QEMU Agent" if agent_available else "Source: Proxmox Config (Agent non disponible)"
+                )
 
                 new_description = " | ".join(desc_parts) if desc_parts else ""
 
                 if existing_interface:
                     self.log_info(
-                        f"    Interface existante trouvee: {existing_interface.name} (MAC: {mac_address})"
+                        f"    Interface existante trouvee : {existing_interface.name} (MAC: {mac_address})"
                     )
 
                     if existing_interface.name.startswith('net'):
                         interface_data['name'] = interface_config['name']
                     else:
                         interface_data['name'] = existing_interface.name
-                        self.log_info(f"      Preservation du nom personnalise: {existing_interface.name}")
+                        self.log_info(f"      Preservation du nom personnalise : {existing_interface.name}")
 
                     if existing_interface.description:
                         if not any(kw in existing_interface.description.lower()
@@ -481,7 +537,7 @@ class ProxmoxSync(Script):
 
                     if existing_by_name:
                         self.log_warning(
-                            f"    Interface {interface_config['name']} existe deja, mise a jour..."
+                            f"    Interface {interface_config['name']} existe deja par nom, mise a jour..."
                         )
                         for key, value in interface_data.items():
                             if key != 'name' and value is not None:
@@ -493,11 +549,12 @@ class ProxmoxSync(Script):
                         netbox_interface = VMInterface.objects.create(**interface_data)
                         self.log_success(f"    Interface {interface_data['name']} creee")
 
+                # CORRECTIF : assign_mac_to_interface renseigne desormais aussi
+                # primary_mac_address sur l'interface pour completer la chaine IPAM.
                 if mac_address:
                     self.assign_mac_to_interface(netbox_interface, mac_address)
 
-                # FIX #2 + #3 : sync_interface_ips utilise desormais la MAC
-                # pour matcher dans les deux modes (agent et fallback).
+                # Le matching des IPs se fait par MAC dans les deux modes (agent et fallback).
                 self.sync_interface_ips(netbox_interface, ip_addresses, mac_address, agent_available)
 
             except Exception as e:
@@ -532,58 +589,134 @@ class ProxmoxSync(Script):
                             )
 
                     if should_delete:
-                        self.log_warning(f"    Suppression interface obsolete: {interface.name}")
+                        self.log_warning(f"    Suppression interface obsolete : {interface.name}")
                         interface.delete()
             except Exception as cleanup_error:
-                self.log_warning(f"    Erreur nettoyage interfaces: {str(cleanup_error)}")
+                self.log_warning(f"    Erreur nettoyage interfaces : {str(cleanup_error)}")
 
-    def assign_mac_to_interface(self, netbox_interface, mac_address):
-        """Assigne une adresse MAC a une interface en utilisant le modele MACAddress"""
-        try:
-            from dcim.models import MACAddress
+    def select_existing_ip_for_host(self, ip_address, netbox_interface, vminterface_ct):
+        """
+        Retourne l'IPAddress NetBox a reutiliser pour une IP Proxmox.
 
-            normalized_mac = self.parse_mac_address(mac_address)
-            if not normalized_mac:
-                return
+        Proxmox remonte souvent l'adresse avec le masque du reseau (/22, /24),
+        alors que l'IPAM historique contient l'hote en /32. Le matching doit
+        donc se faire sur la partie hote pour eviter de creer des doublons.
+        """
+        target_interface = ipaddress.ip_interface(ip_address)
+        target_host = str(target_interface.ip)
+        candidates = []
 
-            mac_obj = MACAddress.objects.filter(mac_address=normalized_mac).first()
-            interface_content_type = ContentType.objects.get_for_model(VMInterface)
+        for ip_obj in IPAddress.objects.all().iterator():
+            try:
+                existing_interface = ipaddress.ip_interface(str(ip_obj.address))
+            except ValueError:
+                continue
 
-            if mac_obj:
-                if (mac_obj.assigned_object_type == interface_content_type and
-                        mac_obj.assigned_object_id == netbox_interface.pk):
-                    self.log_info(f"      MAC {normalized_mac} deja assignee a cette interface")
-                    return
-                elif mac_obj.assigned_object:
-                    self.log_warning(
-                        f"      MAC {normalized_mac} reassignee a l'interface {netbox_interface.name}"
-                    )
+            if str(existing_interface.ip) != target_host:
+                continue
 
-                mac_obj.assigned_object_type = interface_content_type
-                mac_obj.assigned_object_id = netbox_interface.pk
-                mac_obj.save()
+            assigned_object = ip_obj.assigned_object
+            same_interface = (
+                ip_obj.assigned_object_type == vminterface_ct
+                and ip_obj.assigned_object_id == netbox_interface.pk
+            )
+            same_vm = (
+                assigned_object
+                and hasattr(assigned_object, 'virtual_machine')
+                and assigned_object.virtual_machine_id == netbox_interface.virtual_machine_id
+            )
+            unassigned = assigned_object is None
+            prefixlen = existing_interface.network.prefixlen
+            exact_match = str(existing_interface) == str(target_interface)
+
+            if same_interface and prefixlen == 32:
+                score = 0
+            elif unassigned and prefixlen == 32:
+                score = 1
+            elif same_vm and prefixlen == 32:
+                score = 2
+            elif unassigned:
+                score = 3
+            elif same_interface:
+                score = 4
+            elif same_vm:
+                score = 5
+            elif exact_match:
+                score = 6
             else:
-                MACAddress.objects.create(
-                    mac_address=normalized_mac,
-                    assigned_object_type=interface_content_type,
-                    assigned_object_id=netbox_interface.pk
-                )
-                self.log_success(f"      MAC {normalized_mac} creee et assignee")
+                score = 7
 
-        except Exception as e:
-            self.log_warning(f"      Erreur assignation MAC {mac_address}: {str(e)}")
+            candidates.append((score, -prefixlen, str(ip_obj.address), ip_obj.pk, ip_obj))
+
+        if not candidates:
+            return None
+
+        candidates.sort()
+        selected_ip = candidates[0][-1]
+
+        try:
+            selected_interface = ipaddress.ip_interface(str(selected_ip.address))
+            if str(selected_interface) != str(target_interface):
+                self.log_info(
+                    f"      IP existante reutilisee pour {target_host}: "
+                    f"{selected_ip.address} au lieu de {ip_address}"
+                )
+        except ValueError:
+            pass
+
+        return selected_ip
+
+    def detach_duplicate_ips_for_host(self, netbox_interface, selected_ip, host_ip, vminterface_ct):
+        """
+        Detache les doublons assignes a la meme interface pour le meme hote.
+        """
+        existing_ips = IPAddress.objects.filter(
+            assigned_object_type=vminterface_ct,
+            assigned_object_id=netbox_interface.pk,
+        )
+
+        for ip_obj in existing_ips:
+            if ip_obj.pk == selected_ip.pk:
+                continue
+
+            try:
+                existing_host = str(ipaddress.ip_interface(str(ip_obj.address)).ip)
+            except ValueError:
+                continue
+
+            if existing_host != host_ip:
+                continue
+
+            virtual_machine = netbox_interface.virtual_machine
+            if getattr(virtual_machine, 'primary_ip4_id', None) == ip_obj.pk:
+                virtual_machine.primary_ip4 = None
+                virtual_machine.save()
+
+            self.log_warning(
+                f"      Detachement IP doublon : {ip_obj.address} "
+                f"(IP conservee : {selected_ip.address})"
+            )
+            ip_obj.assigned_object_type = None
+            ip_obj.assigned_object_id = None
+            ip_obj.status = 'deprecated'
+            ip_obj.save()
 
     def sync_interface_ips(self, netbox_interface, ip_addresses, interface_mac, agent_available):
         """
         Synchronise les adresses IP d'une interface.
 
-        FIX #2 : le matching se fait TOUJOURS par MAC (normalisee), que l'agent
-        soit disponible ou non. L'ancien fallback par nom d'interface OS ("eth0"
-        vs "net0") ne pouvait jamais matcher et laissait toutes les IPs orphelines.
+        La chaine IPAM NetBox attendue est :
+            VirtualMachine
+              VMInterface (virtual_machine=VM, primary_mac_address=MACAddress)
+                IPAddress (assigned_object_type=VMInterface CT, assigned_object_id=Interface PK)
+            VirtualMachine.primary_ip4 -> IPAddress
 
-        FIX #3 : la verification d'assignation compare desormais assigned_object_type
-        ET assigned_object_id pour eviter des faux positifs sur des IDs identiques
-        appartenant a des objets de types differents.
+        Le matching des IPs se fait toujours par MAC normalisee, que l'agent
+        QEMU soit disponible ou non. Cela garantit que chaque IP est bien
+        rattachee a la bonne interface dans NetBox.
+
+        La verification d'assignation compare assigned_object_type ET
+        assigned_object_id pour eviter les faux positifs.
         """
         vminterface_ct = ContentType.objects.get_for_model(VMInterface)
 
@@ -606,54 +739,63 @@ class ProxmoxSync(Script):
                     assigned_object_id=netbox_interface.pk
                 )
                 for ip in existing_ips:
-                    self.log_warning(f"      Detachement IP obsolete: {ip.address}")
+                    self.log_warning(f"      Detachement IP obsolete : {ip.address}")
                     ip.assigned_object_type = None
                     ip.assigned_object_id = None
                     ip.status = 'deprecated'
                     ip.save()
             return
 
-        synced_ip_addresses = set()
+        synced_ip_hosts = set()
         for ip_info in interface_ips:
             try:
-                synced_ip_addresses.add(str(ipaddress.ip_interface(ip_info['address'])))
+                synced_ip_hosts.add(str(ipaddress.ip_interface(ip_info['address']).ip))
             except ValueError:
-                self.log_warning(f"      IP invalide ignoree: {ip_info['address']}")
+                self.log_warning(f"      IP invalide ignoree : {ip_info['address']}")
 
         for ip_info in interface_ips:
             try:
-                ip_address = str(ipaddress.ip_interface(ip_info['address']))
-                existing_ip = IPAddress.objects.filter(address=ip_address).first()
+                ip_interface = ipaddress.ip_interface(ip_info['address'])
+                ip_address = str(ip_interface)
+                ip_host = str(ip_interface.ip)
+                existing_ip = self.select_existing_ip_for_host(
+                    ip_address,
+                    netbox_interface,
+                    vminterface_ct,
+                )
 
                 if existing_ip:
-                    # FIX #3 : verifier les deux champs pour confirmer l'assignation
-                    if (existing_ip.assigned_object_type == vminterface_ct and
-                            existing_ip.assigned_object_id == netbox_interface.pk):
+                    assigned_object = existing_ip.assigned_object
+
+                    # Verifier les deux champs pour confirmer l'assignation correcte
+                    if (existing_ip.assigned_object_type == vminterface_ct
+                            and existing_ip.assigned_object_id == netbox_interface.pk):
                         existing_ip.status = 'active'
                         existing_ip.save()
-                        self.log_info(f"      IP {ip_address} deja assignee a cette interface")
+                        self.log_info(f"      IP {existing_ip.address} deja assignee a cette interface")
 
-                    elif existing_ip.assigned_object:
-                        if hasattr(existing_ip.assigned_object, 'virtual_machine'):
-                            other_vm = existing_ip.assigned_object.virtual_machine
+                    elif assigned_object:
+                        if hasattr(assigned_object, 'virtual_machine'):
+                            other_vm = assigned_object.virtual_machine
                             if other_vm == netbox_interface.virtual_machine:
+                                previous_interface_name = assigned_object.name
                                 existing_ip.assigned_object_type = vminterface_ct
                                 existing_ip.assigned_object_id = netbox_interface.pk
                                 existing_ip.status = 'active'
                                 existing_ip.save()
                                 self.log_warning(
-                                    f"      IP {ip_address} reassignee de "
-                                    f"{existing_ip.assigned_object.name} vers {netbox_interface.name}"
+                                    f"      IP {existing_ip.address} reassignee de "
+                                    f"{previous_interface_name} vers {netbox_interface.name}"
                                 )
                             else:
                                 self.log_warning(
-                                    f"      IP {ip_address} deja assignee a une autre VM "
+                                    f"      IP {existing_ip.address} deja assignee a une autre VM "
                                     f"({other_vm.name}), ignoree"
                                 )
                                 continue
                         else:
                             self.log_warning(
-                                f"      IP {ip_address} deja assignee a un equipement physique, ignoree"
+                                f"      IP {existing_ip.address} deja assignee a un equipement physique, ignoree"
                             )
                             continue
                     else:
@@ -661,16 +803,23 @@ class ProxmoxSync(Script):
                         existing_ip.assigned_object_id = netbox_interface.pk
                         existing_ip.status = 'active'
                         existing_ip.save()
-                        self.log_success(f"      IP {ip_address} assignee a l'interface")
+                        self.log_success(f"      IP {existing_ip.address} assignee a l'interface")
+
+                    self.detach_duplicate_ips_for_host(
+                        netbox_interface,
+                        existing_ip,
+                        ip_host,
+                        vminterface_ct,
+                    )
 
                 else:
-                    IPAddress.objects.create(
+                    created_ip = IPAddress.objects.create(
                         address=ip_address,
                         assigned_object_type=vminterface_ct,
                         assigned_object_id=netbox_interface.pk,
                         status='active'
                     )
-                    self.log_success(f"      IP {ip_address} creee et assignee")
+                    self.log_success(f"      IP {created_ip.address} creee et assignee a l'interface")
 
             except Exception as e:
                 self.log_failure(f"      Erreur IP {ip_info.get('address', 'unknown')}: {str(e)}")
@@ -683,19 +832,18 @@ class ProxmoxSync(Script):
             )
             for ip in existing_ips:
                 try:
-                    normalized_existing = str(ipaddress.ip_interface(str(ip.address)))
-                    if normalized_existing not in synced_ip_addresses:
-                        self.log_warning(f"      Detachement IP obsolete: {ip.address}")
+                    normalized_existing_host = str(ipaddress.ip_interface(str(ip.address)).ip)
+                    if normalized_existing_host not in synced_ip_hosts:
+                        self.log_warning(f"      Detachement IP obsolete : {ip.address}")
                         ip.assigned_object_type = None
                         ip.assigned_object_id = None
                         ip.status = 'deprecated'
                         ip.save()
                 except ValueError:
-                    self.log_warning(f"      IP invalide detectee: {ip.address}")
+                    self.log_warning(f"      IP invalide detectee : {ip.address}")
 
     # -------------------------------------------------------------------------
     # IP primaire
-    # FIX #1 : renommee apply_primary_ip pour eviter la collision avec le BooleanVar.
     # -------------------------------------------------------------------------
 
     def apply_primary_ip(self, netbox_vm, commit):
@@ -707,7 +855,7 @@ class ProxmoxSync(Script):
             return
 
         if netbox_vm.primary_ip4:
-            self.log_info(f"  IP primaire deja definie: {netbox_vm.primary_ip4.address}")
+            self.log_info(f"  IP primaire deja definie : {netbox_vm.primary_ip4.address}")
             return
 
         try:
@@ -726,14 +874,14 @@ class ProxmoxSync(Script):
                     netbox_vm.primary_ip4 = first_ip
                     netbox_vm.save()
                     self.log_success(
-                        f"  IP primaire definie: {first_ip.address} (interface: {interface.name})"
+                        f"  IP primaire definie : {first_ip.address} (interface : {interface.name})"
                     )
                     return
 
             self.log_info(f"  Aucune IP active trouvee pour definir comme primaire")
 
         except Exception as e:
-            self.log_warning(f"  Erreur lors de la definition de l'IP primaire: {str(e)}")
+            self.log_warning(f"  Erreur lors de la definition de l'IP primaire : {str(e)}")
 
     # -------------------------------------------------------------------------
     # Type de connexion
@@ -769,10 +917,10 @@ class ProxmoxSync(Script):
 
                     if self.is_private_ip(ip_address):
                         has_private = True
-                        self.log_info(f"      IP privee detectee: {ip_address}")
+                        self.log_info(f"      IP privee detectee : {ip_address}")
                     else:
                         has_public = True
-                        self.log_info(f"      IP publique detectee: {ip_address}")
+                        self.log_info(f"      IP publique detectee : {ip_address}")
 
             if has_public:
                 return "Public"
@@ -781,7 +929,7 @@ class ProxmoxSync(Script):
             return None
 
         except Exception as e:
-            self.log_warning(f"      Erreur detection type connexion: {str(e)}")
+            self.log_warning(f"      Erreur detection type connexion : {str(e)}")
             return None
 
     def set_connection_type(self, netbox_vm, commit):
@@ -810,14 +958,14 @@ class ProxmoxSync(Script):
                         netbox_vm.custom_field_data = {}
                     netbox_vm.custom_field_data['Server_Connection_Type'] = connection_type
                     netbox_vm.save()
-                    self.log_success(f"  Type de connexion defini: {connection_type}")
+                    self.log_success(f"  Type de connexion defini : {connection_type}")
                 else:
-                    self.log_info(f"  Type de connexion deja correct: {connection_type}")
+                    self.log_info(f"  Type de connexion deja correct : {connection_type}")
             else:
                 self.log_info(f"  Impossible de determiner le type de connexion (aucune IP valide)")
 
         except Exception as e:
-            self.log_warning(f"  Erreur lors de la definition du type de connexion: {str(e)}")
+            self.log_warning(f"  Erreur lors de la definition du type de connexion : {str(e)}")
 
     # -------------------------------------------------------------------------
     # Disques virtuels
@@ -915,7 +1063,7 @@ class ProxmoxSync(Script):
                         self.log_info(f"    Disque {disk_name} preserve (nom personnalise)")
 
         except Exception as e:
-            self.log_failure(f"  Erreur synchronisation disques virtuels: {str(e)}")
+            self.log_failure(f"  Erreur synchronisation disques virtuels : {str(e)}")
 
     # -------------------------------------------------------------------------
     # Nettoyage VMs obsoletes
@@ -931,7 +1079,7 @@ class ProxmoxSync(Script):
             for netbox_vm in netbox_vms:
                 if netbox_vm.name not in proxmox_vm_names:
                     obsolete_count += 1
-                    self.log_info(f"  [DRY-RUN] VM obsolete qui serait supprimee: {netbox_vm.name}")
+                    self.log_info(f"  [DRY-RUN] VM obsolete qui serait supprimee : {netbox_vm.name}")
 
             if obsolete_count > 0:
                 self.log_warning(f"[DRY-RUN] {obsolete_count} VM(s) obsolete(s) detectee(s)")
@@ -943,7 +1091,7 @@ class ProxmoxSync(Script):
             deleted_count = 0
             for netbox_vm in netbox_vms:
                 if netbox_vm.name not in proxmox_vm_names:
-                    self.log_warning(f"VM obsolete detectee: {netbox_vm.name}")
+                    self.log_warning(f"VM obsolete detectee : {netbox_vm.name}")
 
                     ip_count = 0
                     for interface in VMInterface.objects.filter(virtual_machine=netbox_vm):
@@ -951,7 +1099,7 @@ class ProxmoxSync(Script):
                             assigned_object_type=vminterface_ct,
                             assigned_object_id=interface.pk
                         ):
-                            self.log_info(f"    Detachement IP: {ip.address}")
+                            self.log_info(f"    Detachement IP : {ip.address}")
                             ip.assigned_object_type = None
                             ip.assigned_object_id = None
                             ip.status = 'deprecated'
@@ -966,14 +1114,14 @@ class ProxmoxSync(Script):
                     deleted_count += 1
 
             if deleted_count > 0:
-                self.log_warning(f"Total VMs obsoletes supprimees: {deleted_count}")
+                self.log_warning(f"Total VMs obsoletes supprimees : {deleted_count}")
             else:
                 self.log_success(f"Aucune VM obsolete a supprimer")
 
             return deleted_count
 
         except Exception as e:
-            self.log_failure(f"Erreur lors du nettoyage des VMs obsoletes: {str(e)}")
+            self.log_failure(f"Erreur lors du nettoyage des VMs obsoletes : {str(e)}")
             return 0
 
     # -------------------------------------------------------------------------
@@ -981,7 +1129,7 @@ class ProxmoxSync(Script):
     # -------------------------------------------------------------------------
 
     def run(self, data, commit):
-        self.log_info("=== Demarrage du script de synchronisation ===")
+        self.log_info("Demarrage du script de synchronisation")
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
         self.cleanup_obsolete = data.get('cleanup_obsolete', True)
@@ -1002,7 +1150,7 @@ class ProxmoxSync(Script):
         all_vms = []
         for node in nodes_data['data']:
             node_name = node['node']
-            self.log_info(f"\n=== Traitement du noeud : {node_name} ===")
+            self.log_info(f"Traitement du noeud : {node_name}")
 
             qemu_data = self.proxmox_get(f'{base_url}/nodes/{node_name}/qemu', headers)
             if qemu_data and 'data' in qemu_data:
@@ -1013,7 +1161,7 @@ class ProxmoxSync(Script):
         if not all_vms:
             return "Aucune VM trouvee dans Proxmox"
 
-        self.log_success(f"\n{len(all_vms)} VMs trouvees dans Proxmox:")
+        self.log_success(f"{len(all_vms)} VMs trouvees dans Proxmox")
         for vm in all_vms[:10]:
             self.log_info(
                 f"  - {vm.get('name', 'N/A')} "
@@ -1040,7 +1188,7 @@ class ProxmoxSync(Script):
                 vm_id = vm.get('vmid')
 
                 proxmox_vm_names.add(vm_name)
-                self.log_info(f"\n--- Traitement VM : {vm_name} (ID: {vm_id}) ---")
+                self.log_info(f"Traitement VM : {vm_name} (ID: {vm_id})")
 
                 platform = None
                 if data.get('sync_platforms', True):
@@ -1117,7 +1265,7 @@ class ProxmoxSync(Script):
                             vm_count += 1
 
                             if platform:
-                                self.log_info(f"  Plateforme assignee: {platform.name}")
+                                self.log_info(f"  Plateforme assignee : {platform.name}")
 
                             if data.get('sync_virtual_disks', True):
                                 self.log_info(f"  Synchronisation des disques virtuels...")
@@ -1137,7 +1285,6 @@ class ProxmoxSync(Script):
                                 )
                                 interface_count += 1
 
-                            # FIX #1 : appel via apply_primary_ip au lieu de set_primary_ip
                             if data.get('set_primary_ip', True):
                                 self.log_info(f"  Verification IP primaire...")
                                 self.apply_primary_ip(netbox_vm, commit)
@@ -1158,10 +1305,10 @@ class ProxmoxSync(Script):
                 else:
                     vm_count += 1
                     self.log_info(f"[DRY-RUN] VM {vm_name} serait traitee")
-                    self.log_info(f"[DRY-RUN] Taille disque detectee: {total_disk_gb}GB")
+                    self.log_info(f"[DRY-RUN] Taille disque detectee : {total_disk_gb}GB")
 
                     if platform:
-                        self.log_info(f"[DRY-RUN] Plateforme: {platform.name}")
+                        self.log_info(f"[DRY-RUN] Plateforme : {platform.name}")
                         platform_count += 1
 
                     if data.get('sync_virtual_disks', True) and disk_details:
@@ -1202,24 +1349,19 @@ class ProxmoxSync(Script):
         # Nettoyage des VMs obsoletes
         vm_deleted = 0
         if self.cleanup_obsolete:
-            self.log_info(f"\n=== Nettoyage des VMs obsoletes ===")
+            self.log_info("Nettoyage des VMs obsoletes")
             try:
                 with transaction.atomic():
                     vm_deleted = self.cleanup_obsolete_vms(cluster, proxmox_vm_names, commit)
             except Exception as cleanup_error:
-                self.log_failure(f"Erreur lors du nettoyage des VMs: {str(cleanup_error)}")
+                self.log_failure(f"Erreur lors du nettoyage des VMs : {str(cleanup_error)}")
                 import traceback
                 self.log_debug(f"Traceback: {traceback.format_exc()}")
 
         # Resume final
-        self.log_info("\n" + "=" * 60)
-        self.log_info("=== RESUME DE LA SYNCHRONISATION ===")
-        self.log_info("=" * 60)
-
         mode = "COMMIT" if commit else "DRY-RUN"
         result_msg = f"""
 Mode: {mode}
-{'=' * 60}
 
 Statistiques de synchronisation:
 
@@ -1243,23 +1385,21 @@ Composants synchronises:"""
             result_msg += f"\n  Types de connexion : {connection_type_count} analyses"
 
         if vms_without_agent:
-            result_msg += f"\n\n  VMs sans agent QEMU ({len(vms_without_agent)}):"
+            result_msg += f"\n\nVMs sans agent QEMU ({len(vms_without_agent)}):"
             result_msg += "\n  " + ", ".join(vms_without_agent[:5])
             if len(vms_without_agent) > 5:
                 result_msg += f"\n  ... et {len(vms_without_agent) - 5} autres"
 
         if self.cleanup_obsolete:
-            result_msg += f"\n\n  Nettoyage : {'Actif' if commit else 'Mode simulation'}"
+            result_msg += f"\n\nNettoyage : {'Actif' if commit else 'Mode simulation'}"
         else:
-            result_msg += f"\n\n  Nettoyage : Desactive"
+            result_msg += f"\n\nNettoyage : Desactive"
 
         if not commit:
             result_msg += (
-                f"\n\n  MODE DRY-RUN : Aucune modification n'a ete effectuee."
-                f"\n    Relancez avec 'Commit changes' pour appliquer les modifications."
+                f"\n\nMODE DRY-RUN : Aucune modification n'a ete effectuee."
+                f"\nRelancez avec 'Commit changes' pour appliquer les modifications."
             )
 
         self.log_info(result_msg)
-        self.log_info("=" * 60)
-
         return result_msg
