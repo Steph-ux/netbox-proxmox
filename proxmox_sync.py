@@ -1,6 +1,6 @@
 from extras.scripts import *
 from virtualization.models import Cluster, VirtualMachine, VMInterface, VirtualDisk
-from dcim.models import Platform
+from dcim.models import Platform, Device
 from ipam.models import IPAddress
 from django.contrib.contenttypes.models import ContentType
 from django.db import transaction
@@ -261,6 +261,40 @@ class ProxmoxSync(Script):
                                 })
 
         return ip_addresses
+
+    # -------------------------------------------------------------------------
+    # Noeud physique
+    # -------------------------------------------------------------------------
+
+    def resolve_node_device(self, cluster, node_name):
+        """Associe un node Proxmox a un Device NetBox quand il existe."""
+        if not cluster or not node_name:
+            return None
+
+        node = str(node_name).strip()
+        if not node or node.lower() == 'unknown':
+            return None
+
+        candidates = [
+            f"{cluster.name}-{node}",
+            f"{cluster.name}-{node.upper()}",
+            node,
+            node.upper(),
+        ]
+
+        seen = set()
+        for candidate in candidates:
+            if not candidate or candidate.lower() in seen:
+                continue
+            seen.add(candidate.lower())
+            device = Device.objects.filter(name__iexact=candidate).first()
+            if device:
+                return device
+
+        self.log_warning(
+            f"  Aucun device NetBox trouve pour le node {node} du cluster {cluster.name}"
+        )
+        return None
 
     # -------------------------------------------------------------------------
     # Plateforme
@@ -578,11 +612,54 @@ class ProxmoxSync(Script):
                                 assigned_object_type=vminterface_ct,
                                 assigned_object_id=interface.pk
                             ).first()
+                            primary_mac_id = getattr(interface, 'primary_mac_address_id', None)
 
                             if mac_obj:
                                 mac_str = str(mac_obj.mac_address).upper().replace('-', ':')
                                 if mac_str not in synced_interface_macs:
                                     should_delete = True
+                            elif interface.name.startswith('vmbr') and not primary_mac_id:
+                                # Ancien modele NetBox: interfaces nommees vmbr* sans MAC.
+                                # On les supprime seulement si elles sont vides ou si toutes
+                                # leurs IPs sont deja actives sur une autre VMInterface.
+                                legacy_ips = list(IPAddress.objects.filter(
+                                    assigned_object_type=vminterface_ct,
+                                    assigned_object_id=interface.pk
+                                ))
+
+                                if not legacy_ips:
+                                    should_delete = True
+                                else:
+                                    duplicated_hosts = 0
+                                    for legacy_ip in legacy_ips:
+                                        try:
+                                            legacy_host = str(
+                                                ipaddress.ip_interface(str(legacy_ip.address)).ip
+                                            )
+                                        except ValueError:
+                                            continue
+
+                                        duplicate_found = False
+                                        for other_ip in IPAddress.objects.filter(
+                                            assigned_object_type=vminterface_ct,
+                                            status='active'
+                                        ).exclude(pk=legacy_ip.pk).iterator():
+                                            try:
+                                                other_host = str(
+                                                    ipaddress.ip_interface(str(other_ip.address)).ip
+                                                )
+                                            except ValueError:
+                                                continue
+
+                                            if other_host == legacy_host:
+                                                duplicate_found = True
+                                                break
+
+                                        if duplicate_found:
+                                            duplicated_hosts += 1
+
+                                    if duplicated_hosts == len(legacy_ips):
+                                        should_delete = True
                         except Exception as mac_error:
                             self.log_warning(
                                 f"    Erreur verification MAC pour {interface.name}: {str(mac_error)}"
@@ -665,6 +742,12 @@ class ProxmoxSync(Script):
             pass
 
         return selected_ip
+
+    def normalize_ip_to_host_mask(self, ip_value):
+        """Retourne une IP NetBox au masque hote: IPv4 /32, IPv6 /128."""
+        interface = ipaddress.ip_interface(ip_value)
+        host_prefix = 32 if interface.version == 4 else 128
+        return f"{interface.ip}/{host_prefix}"
 
     def detach_duplicate_ips_for_host(self, netbox_interface, selected_ip, host_ip, vminterface_ct):
         """
@@ -756,7 +839,7 @@ class ProxmoxSync(Script):
         for ip_info in interface_ips:
             try:
                 ip_interface = ipaddress.ip_interface(ip_info['address'])
-                ip_address = str(ip_interface)
+                ip_address = self.normalize_ip_to_host_mask(ip_info['address'])
                 ip_host = str(ip_interface.ip)
                 existing_ip = self.select_existing_ip_for_host(
                     ip_address,
@@ -1177,7 +1260,10 @@ class ProxmoxSync(Script):
         platform_count = 0
         connection_type_count = 0
         virtual_disk_count = 0
+        device_assignment_count = 0
         vms_without_agent = []
+        vms_without_detected_ip = []
+        active_vms_without_detected_ip = []
         proxmox_vm_names = set()
 
         for vm in all_vms:
@@ -1246,6 +1332,10 @@ class ProxmoxSync(Script):
                 if platform:
                     vm_data['platform'] = platform
 
+                node_device = self.resolve_node_device(cluster, node_name)
+                if node_device:
+                    vm_data['device'] = node_device
+
                 if commit:
                     try:
                         with transaction.atomic():
@@ -1267,6 +1357,10 @@ class ProxmoxSync(Script):
                             if platform:
                                 self.log_info(f"  Plateforme assignee : {platform.name}")
 
+                            if node_device:
+                                device_assignment_count += 1
+                                self.log_info(f"  Noeud physique assigne : {node_device.name}")
+
                             if data.get('sync_virtual_disks', True):
                                 self.log_info(f"  Synchronisation des disques virtuels...")
                                 self.sync_vm_virtual_disks(netbox_vm, disk_details, commit)
@@ -1284,6 +1378,28 @@ class ProxmoxSync(Script):
                                     vm_id, headers, vm_status, commit
                                 )
                                 interface_count += 1
+
+                                vminterface_ct = ContentType.objects.get_for_model(VMInterface)
+                                vm_interface_ids = list(
+                                    VMInterface.objects.filter(virtual_machine=netbox_vm)
+                                    .values_list('id', flat=True)
+                                )
+                                vm_has_active_ips = IPAddress.objects.filter(
+                                    assigned_object_type=vminterface_ct,
+                                    assigned_object_id__in=vm_interface_ids,
+                                    status='active'
+                                ).exists()
+                                if not vm_has_active_ips:
+                                    vms_without_detected_ip.append(vm_name)
+                                    if vm.get('status') == 'running':
+                                        active_vms_without_detected_ip.append(vm_name)
+                                        self.log_warning(
+                                            f"  Aucune IP detectee pour la VM active {vm_name}"
+                                        )
+                                    else:
+                                        self.log_info(
+                                            f"  Aucune IP detectee pour la VM {vm_name}"
+                                        )
 
                             if data.get('set_primary_ip', True):
                                 self.log_info(f"  Verification IP primaire...")
@@ -1310,6 +1426,10 @@ class ProxmoxSync(Script):
                     if platform:
                         self.log_info(f"[DRY-RUN] Plateforme : {platform.name}")
                         platform_count += 1
+
+                    if node_device:
+                        self.log_info(f"[DRY-RUN] Noeud physique : {node_device.name}")
+                        device_assignment_count += 1
 
                     if data.get('sync_virtual_disks', True) and disk_details:
                         self.sync_vm_virtual_disks(None, disk_details, commit)
@@ -1379,6 +1499,7 @@ Composants synchronises:"""
             result_msg += f"\n  Interfaces reseau  : {interface_count} VMs"
         if data.get('sync_platforms', True):
             result_msg += f"\n  Plateformes OS     : {platform_count} detectees"
+        result_msg += f"\n  Noeuds physiques   : {device_assignment_count} assignes"
         if data.get('set_primary_ip', True):
             result_msg += f"\n  IPs primaires      : verifiees"
         if data.get('sync_connection_type', True):
@@ -1389,6 +1510,18 @@ Composants synchronises:"""
             result_msg += "\n  " + ", ".join(vms_without_agent[:5])
             if len(vms_without_agent) > 5:
                 result_msg += f"\n  ... et {len(vms_without_agent) - 5} autres"
+
+        if vms_without_detected_ip:
+            result_msg += f"\n\nVMs sans IP detectee apres sync ({len(vms_without_detected_ip)}):"
+            result_msg += "\n  " + ", ".join(vms_without_detected_ip[:8])
+            if len(vms_without_detected_ip) > 8:
+                result_msg += f"\n  ... et {len(vms_without_detected_ip) - 8} autres"
+
+        if active_vms_without_detected_ip:
+            result_msg += f"\n\nVMs actives sans IP detectee ({len(active_vms_without_detected_ip)}):"
+            result_msg += "\n  " + ", ".join(active_vms_without_detected_ip[:8])
+            if len(active_vms_without_detected_ip) > 8:
+                result_msg += f"\n  ... et {len(active_vms_without_detected_ip) - 8} autres"
 
         if self.cleanup_obsolete:
             result_msg += f"\n\nNettoyage : {'Actif' if commit else 'Mode simulation'}"
